@@ -84,7 +84,7 @@ def load_imdb_dataset(
     for xt in x_test_:
         x_test.append(xt[:vector_size] + ([0] * (vector_size - len(xt))))
 
-    return (torch.Tensor(x_train), torch.Tensor(y_train)), (
-        torch.Tensor(x_test),
+    return (torch.IntTensor(x_train), torch.Tensor(y_train)), (
+        torch.IntTensor(x_test),
         torch.Tensor(y_test),
     )

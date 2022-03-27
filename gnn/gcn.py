@@ -69,7 +69,7 @@ class GINLayer(BaseGNNLayer):
         self.w = nn.parameter.Parameter(
             torch.FloatTensor(n_in, n_out).random_(-1, 1) * 0.01
         )
-        self.eps = nn.parameter.Parameter(torch.Tensor(1e-5))
+        self.eps = nn.parameter.Parameter(torch.as_tensor(1e-5))
 
     def aggregate(self, x, adj):
         return adj @ x
@@ -225,18 +225,5 @@ if __name__ == "__main__":
     print("----" * 15)
 
     print("----" * 15)
-    print("No normalization")
     train(GIN, gcn_norm=None, device="cuda" if torch.cuda.is_available() else "cpu")
-
-    print("Row normalization")
-    train(GIN, gcn_norm=GCNNorm.ROW, device="cuda" if torch.cuda.is_available() else "cpu")
-
-    print("Col normalization")
-    train(GIN, gcn_norm=GCNNorm.COL, device="cuda" if torch.cuda.is_available() else "cpu")
-
-    print("Symmetric normalization")
-    train(
-        GIN, gcn_norm=GCNNorm.SYMMETRIC,
-        device="cuda" if torch.cuda.is_available() else "cpu",
-    )
     print("----" * 15)
