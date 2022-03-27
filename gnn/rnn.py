@@ -1,6 +1,7 @@
 import torch
-from torch import nn
+from torch import nn, optim
 from torch.nn.modules.activation import Tanh
+from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
 from gnn.base import BaseGNNLayer
@@ -8,47 +9,94 @@ from gnn.datasets import load_imdb_dataset
 
 
 class RNNLayer(BaseGNNLayer):
-    def __init__(self, n_in: int, n_out: int, activation: nn.Module, vocab_size: int):
+    def __init__(
+        self,
+        n_in: int,
+        hidden_size: int,
+        activation: nn.Module,
+    ):
         super().__init__(activation)
-        self.embedding = nn.Embedding(vocab_size, n_in)
-        self.w = nn.Linear(n_in, n_out)
-        self.h = nn.parameter.Parameter(torch.FloatTensor((n_out)))
+
+        self.wx = nn.Linear(n_in, hidden_size)
+        self.wh = nn.Linear(hidden_size, hidden_size)
 
     def aggregate(self, x):
-        emb = self.embedding(x)
-        return self.w(emb)
+        return self.wx(x)
 
-    def combine(self, x, prev_out):
-        return super().combine(x, prev_out)
+    def combine(self, a, h_):
+        return super().combine(a, self.wh(h_))
 
-    def forward(self, x, prev_out):
-        x = self.aggregate(x)
-        return self.combine(x, prev_out)
+    def forward(self, a, h_):
+        a = self.aggregate(a)
+        return self.combine(a, h_)
+
+
+class RNN(nn.Module):
+    def __init__(self, vocab_size: int, n_in: int, hidden_size: int):
+        super().__init__()
+
+        self.hidden_size = hidden_size
+        self.vocab_size = vocab_size
+        # TODO: n_in 128
+        self.embedding = nn.Embedding(vocab_size, 128, padding_idx=0)
+
+        self.rnn = RNNLayer(128, hidden_size, Tanh())
+        self.clf = nn.Linear(hidden_size, 2)
+
+    def forward(self, batch):
+        h = torch.zeros((len(batch), self.hidden_size))
+        h = h.to(batch.get_device())
+
+        # b x wl x d
+        emb = self.embedding(batch)
+        for j in range(batch.size(1)):
+            h = self.rnn(emb[:, j, :], h)
+
+        return self.clf(h)
 
 
 def train(
-    vocab_size: int = 5000,
-    vector_size: int = 256,
+    vocab_size: int = 3000,
+    vector_size: int = 512,
     seed: int = 42,
-    n_epochs=300,
+    batch_size: int = 1024,
+    n_epochs=30,
     device="cpu",
 ):
-    (x_train, y_train), (x_test, y_test) = load_imdb_dataset(
+    train_dataset, test_dataset = load_imdb_dataset(
         seed=seed, vocab_size=vocab_size, vector_size=vector_size
     )
 
-    x_train = x_train[:1000, :]
+    train_data = DataLoader(
+        train_dataset, batch_size=batch_size, drop_last=True, shuffle=True
+    )
+    test_data = DataLoader(
+        test_dataset, batch_size=batch_size, drop_last=True, shuffle=True
+    )
 
-    model = RNNLayer(128, 2, Tanh(), vocab_size)
+    device = torch.device(device)
 
-    out = model(x_train[:, 0], torch.zeros((x_train.size(0), 2)))
-    with tqdm(range(n_epochs - 1)) as t:
-        for _ in t:
-            for j in range(1, vector_size):
-                out = model(x_train[:, j], out)
+    model = RNN(vocab_size, 128, 1024)
+    loss_fn = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=0.005)
 
-    y = out.argmax(1)
+    model.to(device)
+
+    for _ in range(n_epochs):
+        with tqdm(train_data) as t:
+            for x, y in t:
+                x = x.to(device)
+                y = y.to(device)
+                optimizer.zero_grad()
+                y_ = model(x)
+                loss = loss_fn(y_, y)
+                loss.backward()
+                optimizer.step()
+
+                accuracy = (y_.argmax(1) == y).float().mean()
+
+                t.set_postfix({"Loss": loss.item(), "Accuracy": accuracy.item()})
 
 
 if __name__ == "__main__":
-    train()
+    train(device="cuda" if torch.cuda.is_available() else "cpu")

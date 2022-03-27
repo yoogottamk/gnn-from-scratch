@@ -17,5 +17,6 @@ class BaseGNNLayer(nn.Module):
         return self.activation(x + msg)
 
     def forward(self, x, adj):
-        x = self.aggregate(x, adj)
-        x = self.combine(x, x)
+        msg = self.aggregate(x, adj)
+        x = self.combine(x, msg)
+        return x

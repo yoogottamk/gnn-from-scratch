@@ -6,6 +6,7 @@ import numpy as np
 import torch
 from keras.datasets import imdb
 from torch.nn.functional import one_hot
+from torch.utils.data import Dataset
 
 from gnn.config import DATA_ROOT
 
@@ -65,6 +66,18 @@ def load_citeseer_dataset(
     )
 
 
+class IMDBDataset(Dataset):
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+    def __len__(self):
+        return len(self.x)
+
+    def __getitem__(self, idx):
+        return self.x[idx], self.y[idx]
+
+
 def load_imdb_dataset(
     dataset_path: Path = DATA_ROOT / "imdb.npz",
     seed: int = 42,
@@ -84,7 +97,4 @@ def load_imdb_dataset(
     for xt in x_test_:
         x_test.append(xt[:vector_size] + ([0] * (vector_size - len(xt))))
 
-    return (torch.IntTensor(x_train), torch.Tensor(y_train)), (
-        torch.IntTensor(x_test),
-        torch.Tensor(y_test),
-    )
+    return IMDBDataset(np.array(x_train), y_train), IMDBDataset(np.array(x_test), y_test)
