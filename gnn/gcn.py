@@ -25,15 +25,9 @@ class GCNLayer(BaseGNNLayer):
         activation: nn.Module,
         norm: Optional[GCNNorm] = None,
     ):
-        super().__init__()
-
-        self.n_in = n_in
-        self.n_out = n_out
-        self.w = nn.parameter.Parameter(torch.FloatTensor(n_in, n_out).random_(-1, 1))
+        super().__init__(n_in, n_out, activation)
 
         self.norm = norm
-
-        self.activation = activation
 
     def aggregate(self, x, adj):
         N = adj.size(0)
@@ -50,17 +44,6 @@ class GCNLayer(BaseGNNLayer):
             a_ = d @ a_ @ d
 
         return a_ @ x
-
-    def combine(self, x, msg):
-        return self.activation(x + msg)
-
-    def forward(self, x, adj):
-        x = x @ self.w
-
-        msg = self.aggregate(x, adj)
-        x = self.combine(x, msg)
-
-        return x
 
 
 class GCN(nn.Module):
@@ -135,7 +118,7 @@ def train(
             ).sum() / train_test_mask.sum()
             optimizer.step()
 
-            t.set_description_str(f"Loss: {loss.item():0.6} | Accuracy: {accuracy:0.6}")
+            t.set_postfix({"Loss": loss.item(), "Accuracy": accuracy})
 
     if train_ratio == 1:
         return
