@@ -5,7 +5,6 @@ from typing import List, Optional
 import numpy as np
 import torch
 from torch import nn, optim
-from torch.nn.modules.activation import ReLU
 from tqdm.auto import tqdm
 
 from gnn.base import BaseGNNLayer
@@ -23,8 +22,8 @@ class GCNLayer(BaseGNNLayer):
         self,
         n_in: int,
         n_out: int,
+        activation: nn.Module,
         norm: Optional[GCNNorm] = None,
-        use_activation: bool = True,
     ):
         super().__init__()
 
@@ -34,7 +33,7 @@ class GCNLayer(BaseGNNLayer):
 
         self.norm = norm
 
-        self.activation = ReLU() if use_activation else nn.Identity()
+        self.activation = activation
 
     def aggregate(self, x, adj):
         N = adj.size(0)
@@ -53,7 +52,7 @@ class GCNLayer(BaseGNNLayer):
         return a_ @ x
 
     def combine(self, x, msg):
-        return x + msg
+        return self.activation(x + msg)
 
     def forward(self, x, adj):
         x = x @ self.w
@@ -74,9 +73,9 @@ class GCN(nn.Module):
                 GCNLayer(
                     layer_descriptions[i - 1],
                     layer_descriptions[i],
-                    norm,
                     # dont relu the last layer
-                    use_activation=i != len(layer_descriptions) - 1,
+                    nn.ELU() if i != len(layer_descriptions) - 1 else nn.Softmax(dim=1),
+                    norm,
                 )
             )
 
