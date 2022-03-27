@@ -87,12 +87,14 @@ class GCN(nn.Module):
         return x
 
 
-def train(seed: int = 42, n_epochs: int = 300, train_ratio: float = 0.75):
+def train(seed: int = 42, n_epochs: int = 300, train_ratio: float = 0.75, device="cpu"):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
+
+    device = torch.device(device)
 
     (
         adj_matrix,
@@ -107,6 +109,10 @@ def train(seed: int = 42, n_epochs: int = 300, train_ratio: float = 0.75):
     model = GCN([len(word_attributes[0]), 16, len(class_1hot[0])])
     loss_fn = nn.CrossEntropyLoss(reduction="none")
     optimizer = optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
+
+    model.to(device)
+    word_attributes.to(device)
+    class_1hot.to(device)
 
     with tqdm(range(n_epochs)) as t:
         for _ in t:
@@ -142,4 +148,4 @@ def train(seed: int = 42, n_epochs: int = 300, train_ratio: float = 0.75):
 
 
 if __name__ == "__main__":
-    train()
+    train(device="cuda" if torch.cuda.is_available() else "cpu")
