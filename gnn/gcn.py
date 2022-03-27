@@ -38,11 +38,10 @@ class GCNLayer(BaseGNNLayer):
 
     def aggregate(self, x, adj):
         N = adj.size(0)
-        a_ = adj + torch.eye(N)
+        a_ = adj + torch.eye(N).to(adj.get_device())
 
-        d = torch.zeros((N, N))
-        d[range(N), range(N)] = a_.sum(1)
-        d = torch.pow(d, -0.5)
+        d = torch.zeros((N, N)).to(adj.get_device())
+        d[range(N), range(N)] = torch.pow(a_.sum(1), -0.5)
 
         if self.norm == GCNNorm.COL:
             a_ = d @ a_
@@ -66,7 +65,7 @@ class GCNLayer(BaseGNNLayer):
 
 
 class GCN(nn.Module):
-    def __init__(self, layer_descriptions: List[int]):
+    def __init__(self, layer_descriptions: List[int], norm: Optional[GCNNorm] = None):
         super().__init__()
 
         self.module_list = nn.ModuleList()
@@ -75,7 +74,7 @@ class GCN(nn.Module):
                 GCNLayer(
                     layer_descriptions[i - 1],
                     layer_descriptions[i],
-                    GCNNorm.SYMMETRIC,
+                    norm,
                     # dont relu the last layer
                     use_activation=i != len(layer_descriptions) - 1,
                 )
@@ -87,7 +86,13 @@ class GCN(nn.Module):
         return x
 
 
-def train(seed: int = 42, n_epochs: int = 300, train_ratio: float = 0.75, device="cpu"):
+def train(
+    gcn_norm: Optional[GCNNorm] = None,
+    seed: int = 42,
+    n_epochs: int = 300,
+    train_ratio: float = 0.75,
+    device="cpu",
+):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -106,13 +111,15 @@ def train(seed: int = 42, n_epochs: int = 300, train_ratio: float = 0.75, device
         train_test_mask,
     ) = load_citeseer_dataset(train_ratio=train_ratio)
 
-    model = GCN([len(word_attributes[0]), 16, len(class_1hot[0])])
+    model = GCN([len(word_attributes[0]), 16, len(class_1hot[0])], gcn_norm)
     loss_fn = nn.CrossEntropyLoss(reduction="none")
     optimizer = optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
     model.to(device)
-    word_attributes.to(device)
-    class_1hot.to(device)
+    word_attributes = word_attributes.to(device)
+    class_1hot = class_1hot.to(device)
+    adj_matrix = adj_matrix.to(device)
+    train_test_mask = train_test_mask.to(device)
 
     with tqdm(range(n_epochs)) as t:
         for _ in t:
@@ -148,4 +155,17 @@ def train(seed: int = 42, n_epochs: int = 300, train_ratio: float = 0.75, device
 
 
 if __name__ == "__main__":
-    train(device="cuda" if torch.cuda.is_available() else "cpu")
+    print("No normalization")
+    train(gcn_norm=None, device="cuda" if torch.cuda.is_available() else "cpu")
+
+    print("Row normalization")
+    train(gcn_norm=GCNNorm.ROW, device="cuda" if torch.cuda.is_available() else "cpu")
+
+    print("Col normalization")
+    train(gcn_norm=GCNNorm.COL, device="cuda" if torch.cuda.is_available() else "cpu")
+
+    print("Symmetric normalization")
+    train(
+        gcn_norm=GCNNorm.SYMMETRIC,
+        device="cuda" if torch.cuda.is_available() else "cpu",
+    )
