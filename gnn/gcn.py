@@ -25,8 +25,11 @@ class GCNLayer(BaseGNNLayer):
         activation: nn.Module,
         norm: Optional[GCNNorm] = None,
     ):
-        super().__init__(n_in, n_out, activation)
+        super().__init__(activation)
 
+        self.w = nn.parameter.Parameter(
+            torch.FloatTensor(n_in, n_out).random_(-1, 1) * 0.01
+        )
         self.norm = norm
 
     def aggregate(self, x, adj):
@@ -44,6 +47,46 @@ class GCNLayer(BaseGNNLayer):
             a_ = d @ a_ @ d
 
         return a_ @ x
+
+    def forward(self, x, adj):
+        x = x @ self.w
+
+        msg = self.aggregate(x, adj)
+        x = self.combine(x, msg)
+
+        return x
+
+
+class GINLayer(BaseGNNLayer):
+    def __init__(
+        self,
+        n_in: int,
+        n_out: int,
+        activation: nn.Module,
+    ):
+        super().__init__(activation)
+
+        self.w = nn.parameter.Parameter(
+            torch.FloatTensor(n_in, n_out).random_(-1, 1) * 0.01
+        )
+        self.eps = nn.parameter.Parameter(torch.Tensor(1e-5))
+
+    def aggregate(self, x, adj):
+        return adj @ x
+
+    def combine(self, x, msg):
+        N = x.size(0)
+        return self.activation(
+            msg + (((1 + self.eps) * torch.eye(N).to(msg.get_device())) @ x)
+        )
+
+    def forward(self, x, adj):
+        x = x @ self.w
+
+        msg = self.aggregate(x, adj)
+        x = self.combine(x, msg)
+
+        return x
 
 
 class GCN(nn.Module):
@@ -68,7 +111,29 @@ class GCN(nn.Module):
         return x
 
 
+class GIN(nn.Module):
+    def __init__(self, layer_descriptions: List[int], *args):
+        super().__init__()
+
+        self.module_list = nn.ModuleList()
+        for i in range(1, len(layer_descriptions)):
+            self.module_list.append(
+                GINLayer(
+                    layer_descriptions[i - 1],
+                    layer_descriptions[i],
+                    # dont relu the last layer
+                    nn.ELU() if i != len(layer_descriptions) - 1 else nn.Softmax(dim=1),
+                )
+            )
+
+    def forward(self, x, adj):
+        for module in self.module_list:
+            x = module(x, adj)
+        return x
+
+
 def train(
+    model_cls,
     gcn_norm: Optional[GCNNorm] = None,
     seed: int = 42,
     n_epochs: int = 300,
@@ -93,7 +158,7 @@ def train(
         train_test_mask,
     ) = load_citeseer_dataset(train_ratio=train_ratio)
 
-    model = GCN([len(word_attributes[0]), 16, len(class_1hot[0])], gcn_norm)
+    model = model_cls([len(word_attributes[0]), 16, len(class_1hot[0])], gcn_norm)
     loss_fn = nn.CrossEntropyLoss(reduction="none")
     optimizer = optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
@@ -118,7 +183,7 @@ def train(
             ).sum() / train_test_mask.sum()
             optimizer.step()
 
-            t.set_postfix({"Loss": loss.item(), "Accuracy": accuracy})
+            t.set_postfix({"Loss": loss.item(), "Accuracy": accuracy.item()})
 
     if train_ratio == 1:
         return
@@ -137,17 +202,41 @@ def train(
 
 
 if __name__ == "__main__":
+    print("----" * 15)
     print("No normalization")
-    train(gcn_norm=None, device="cuda" if torch.cuda.is_available() else "cpu")
+    train(GCN, gcn_norm=None, device="cuda" if torch.cuda.is_available() else "cpu")
 
     print("Row normalization")
-    train(gcn_norm=GCNNorm.ROW, device="cuda" if torch.cuda.is_available() else "cpu")
+    train(
+        GCN, gcn_norm=GCNNorm.ROW, device="cuda" if torch.cuda.is_available() else "cpu"
+    )
 
     print("Col normalization")
-    train(gcn_norm=GCNNorm.COL, device="cuda" if torch.cuda.is_available() else "cpu")
+    train(
+        GCN, gcn_norm=GCNNorm.COL, device="cuda" if torch.cuda.is_available() else "cpu"
+    )
 
     print("Symmetric normalization")
     train(
+        GCN,
         gcn_norm=GCNNorm.SYMMETRIC,
         device="cuda" if torch.cuda.is_available() else "cpu",
     )
+    print("----" * 15)
+
+    print("----" * 15)
+    print("No normalization")
+    train(GIN, gcn_norm=None, device="cuda" if torch.cuda.is_available() else "cpu")
+
+    print("Row normalization")
+    train(GIN, gcn_norm=GCNNorm.ROW, device="cuda" if torch.cuda.is_available() else "cpu")
+
+    print("Col normalization")
+    train(GIN, gcn_norm=GCNNorm.COL, device="cuda" if torch.cuda.is_available() else "cpu")
+
+    print("Symmetric normalization")
+    train(
+        GIN, gcn_norm=GCNNorm.SYMMETRIC,
+        device="cuda" if torch.cuda.is_available() else "cpu",
+    )
+    print("----" * 15)

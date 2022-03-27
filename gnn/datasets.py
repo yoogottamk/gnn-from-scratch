@@ -4,8 +4,8 @@ from typing import List
 
 import numpy as np
 import torch
+from keras.datasets import imdb
 from torch.nn.functional import one_hot
-from torchtext.datasets import IMDB
 
 from gnn.config import DATA_ROOT
 
@@ -65,5 +65,26 @@ def load_citeseer_dataset(
     )
 
 
-def load_imdb_dataset(dataset_dir: Path = DATA_ROOT / "imdb"):
-    return IMDB(root=str(dataset_dir), split=("train", "test"))
+def load_imdb_dataset(
+    dataset_path: Path = DATA_ROOT / "imdb.npz",
+    seed: int = 42,
+    vocab_size: int = 5000,
+    vector_size: int = 1024,
+):
+    (x_train_, y_train), (x_test_, y_test) = imdb.load_data(
+        str(dataset_path), num_words=vocab_size, seed=seed
+    )
+
+    x_train = []
+    x_test = []
+
+    # 0 is the padding character
+    for xt in x_train_:
+        x_train.append(xt[:vector_size] + ([0] * (vector_size - len(xt))))
+    for xt in x_test_:
+        x_test.append(xt[:vector_size] + ([0] * (vector_size - len(xt))))
+
+    return (torch.Tensor(x_train), torch.Tensor(y_train)), (
+        torch.Tensor(x_test),
+        torch.Tensor(y_test),
+    )
