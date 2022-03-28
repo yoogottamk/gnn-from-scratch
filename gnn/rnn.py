@@ -40,7 +40,6 @@ class RNN(nn.Module):
 
         self.hidden_size = hidden_size
         self.vocab_size = vocab_size
-        # TODO: n_in 128
         self.embedding = nn.Embedding(vocab_size, n_in, padding_idx=0)
 
         self.rnn = RNNLayer(n_in, hidden_size, Tanh())
@@ -53,7 +52,7 @@ class RNN(nn.Module):
         # b x wl x d
         emb = self.embedding(batch)
         for j in range(emb.size(1)):
-            h = self.rnn(emb[:, j, :], h)
+            h = self.rnn(emb[:, j], h)
 
         return self.clf(h)
 
