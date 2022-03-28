@@ -65,6 +65,7 @@ class GIN(nn.Module):
 
 def train(
     seed: int = 42,
+    try_deep: bool = False,
     n_epochs: int = 300,
     train_ratio: float = 0.75,
     device="cpu",
@@ -87,7 +88,11 @@ def train(
         train_test_mask,
     ) = load_citeseer_dataset(train_ratio=train_ratio)
 
-    model = GIN([len(word_attributes[0]), 16, len(class_1hot[0])])
+    if not try_deep:
+        model = GIN([len(word_attributes[0]), 16, len(class_1hot[0])])
+    else:
+        model = GIN([len(word_attributes[0]), 64, 16, len(class_1hot[0])])
+
     loss_fn = nn.CrossEntropyLoss(reduction="none")
     optimizer = optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
@@ -131,4 +136,8 @@ def train(
 
 
 if __name__ == "__main__":
+    print("GCN-like architecture")
     train(device="cuda" if torch.cuda.is_available() else "cpu")
+
+    print("Deeper model")
+    train(try_deep=True, n_epochs=500, device="cuda" if torch.cuda.is_available() else "cpu")

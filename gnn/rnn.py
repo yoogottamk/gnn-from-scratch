@@ -27,8 +27,6 @@ class RNNLayer(BaseGNNLayer):
         return self.wx(x)
 
     def combine(self, a, h_):
-        h_ = self.wh(h_)
-        return self.activation(a, h_)
         return super().combine(a, self.wh(h_))
 
     def forward(self, a, h_):
