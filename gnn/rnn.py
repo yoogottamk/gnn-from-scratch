@@ -1,3 +1,6 @@
+import random
+
+import numpy as np
 import torch
 from torch import nn, optim
 from torch.nn.modules.activation import Tanh
@@ -63,6 +66,12 @@ def train(
     n_epochs=30,
     device="cpu",
 ):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+
     train_dataset, test_dataset = load_imdb_dataset(
         seed=seed, vocab_size=vocab_size, vector_size=vector_size
     )

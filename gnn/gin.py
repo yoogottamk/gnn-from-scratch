@@ -1,6 +1,5 @@
 import random
-from enum import Enum
-from typing import List, Optional
+from typing import List
 
 import numpy as np
 import torch
@@ -11,42 +10,28 @@ from gnn.base import BaseGNNLayer
 from gnn.datasets import load_citeseer_dataset
 
 
-class GCNNorm(Enum):
-    COL = 0
-    ROW = 1
-    SYMMETRIC = 2
-
-
-class GCNLayer(BaseGNNLayer):
+class GINLayer(BaseGNNLayer):
     def __init__(
         self,
         n_in: int,
         n_out: int,
         activation: nn.Module,
-        norm: Optional[GCNNorm] = None,
     ):
         super().__init__(activation)
 
         self.w = nn.parameter.Parameter(
             torch.FloatTensor(n_in, n_out).random_(-1, 1) * 0.01
         )
-        self.norm = norm
+        self.eps = nn.parameter.Parameter(torch.as_tensor(1e-5))
 
     def aggregate(self, x, adj):
-        N = adj.size(0)
-        a_ = adj + torch.eye(N).to(adj.get_device())
+        return adj @ x
 
-        d = torch.zeros((N, N)).to(adj.get_device())
-        d[range(N), range(N)] = torch.pow(a_.sum(1), -0.5)
-
-        if self.norm == GCNNorm.COL:
-            a_ = d @ a_
-        elif self.norm == GCNNorm.ROW:
-            a_ = a_ @ d
-        elif self.norm == GCNNorm.SYMMETRIC:
-            a_ = d @ a_ @ d
-
-        return a_ @ x
+    def combine(self, x, msg):
+        N = x.size(0)
+        return self.activation(
+            msg + (((1 + self.eps) * torch.eye(N).to(msg.get_device())) @ x)
+        )
 
     def forward(self, x, adj):
         x = x @ self.w
@@ -57,19 +42,18 @@ class GCNLayer(BaseGNNLayer):
         return x
 
 
-class GCN(nn.Module):
-    def __init__(self, layer_descriptions: List[int], norm: Optional[GCNNorm] = None):
+class GIN(nn.Module):
+    def __init__(self, layer_descriptions: List[int]):
         super().__init__()
 
         self.module_list = nn.ModuleList()
         for i in range(1, len(layer_descriptions)):
             self.module_list.append(
-                GCNLayer(
+                GINLayer(
                     layer_descriptions[i - 1],
                     layer_descriptions[i],
                     # dont relu the last layer
                     nn.ELU() if i != len(layer_descriptions) - 1 else nn.Softmax(dim=1),
-                    norm,
                 )
             )
 
@@ -80,7 +64,6 @@ class GCN(nn.Module):
 
 
 def train(
-    gcn_norm: Optional[GCNNorm] = None,
     seed: int = 42,
     n_epochs: int = 300,
     train_ratio: float = 0.75,
@@ -104,7 +87,7 @@ def train(
         train_test_mask,
     ) = load_citeseer_dataset(train_ratio=train_ratio)
 
-    model = GCN([len(word_attributes[0]), 16, len(class_1hot[0])], gcn_norm)
+    model = GIN([len(word_attributes[0]), 16, len(class_1hot[0])])
     loss_fn = nn.CrossEntropyLoss(reduction="none")
     optimizer = optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
@@ -148,16 +131,4 @@ def train(
 
 
 if __name__ == "__main__":
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    print("No normalization")
-    train(gcn_norm=None, device=device)
-
-    print("Row normalization")
-    train(gcn_norm=GCNNorm.ROW, device=device)
-
-    print("Col normalization")
-    train(gcn_norm=GCNNorm.COL, device=device)
-
-    print("Symmetric normalization")
-    train(gcn_norm=GCNNorm.SYMMETRIC, device=device)
+    train(device="cuda" if torch.cuda.is_available() else "cpu")
