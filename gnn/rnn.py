@@ -27,6 +27,8 @@ class RNNLayer(BaseGNNLayer):
         return self.wx(x)
 
     def combine(self, a, h_):
+        h_ = self.wh(h_)
+        return self.activation(a, h_)
         return super().combine(a, self.wh(h_))
 
     def forward(self, a, h_):
@@ -41,9 +43,9 @@ class RNN(nn.Module):
         self.hidden_size = hidden_size
         self.vocab_size = vocab_size
         # TODO: n_in 128
-        self.embedding = nn.Embedding(vocab_size, 128, padding_idx=0)
+        self.embedding = nn.Embedding(vocab_size, n_in, padding_idx=0)
 
-        self.rnn = RNNLayer(128, hidden_size, Tanh())
+        self.rnn = RNNLayer(n_in, hidden_size, Tanh())
         self.clf = nn.Linear(hidden_size, 2)
 
     def forward(self, batch):
@@ -52,7 +54,7 @@ class RNN(nn.Module):
 
         # b x wl x d
         emb = self.embedding(batch)
-        for j in range(batch.size(1)):
+        for j in range(emb.size(1)):
             h = self.rnn(emb[:, j, :], h)
 
         return self.clf(h)
