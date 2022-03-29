@@ -62,7 +62,7 @@ def train(
     vector_size: int = 512,
     seed: int = 42,
     batch_size: int = 1024,
-    n_epochs=30,
+    n_epochs=50,
     device="cpu",
 ):
     random.seed(seed)
@@ -85,10 +85,9 @@ def train(
     device = torch.device(device)
 
     model = RNN(vocab_size, 128, 1024)
+    model.to(device)
     loss_fn = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.005)
-
-    model.to(device)
 
     for _ in range(n_epochs):
         with tqdm(train_data) as t:
@@ -104,6 +103,16 @@ def train(
                 accuracy = (y_.argmax(1) == y).float().mean()
 
                 t.set_postfix({"Loss": loss.item(), "Accuracy": accuracy.item()})
+
+    model.eval()
+    test_acc = []
+    for x, y in test_data:
+        x = x.to(device)
+        y = y.to(device)
+        y_ = model(x)
+        test_acc.append((y_.argmax(1) == y).float().mean())
+
+    print(np.average(test_acc))
 
 
 if __name__ == "__main__":
